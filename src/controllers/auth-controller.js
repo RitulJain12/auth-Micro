@@ -1,7 +1,7 @@
 const userModel=require('../models/user.model');
 const bcrypt=require('bcryptjs');
 const jwt=require('jsonwebtoken');
-const redis = require('../db/redis');
+//const redis = require('../db/redis');
 require('dotenv').config();
 const RabitMq=require('../service/broker');
 async function registerUSer(req,res) {
@@ -119,7 +119,7 @@ return res.status(200).json({
 async function logoutCurrentUser(req,res) {
     const token=req.cookies.token;
     if(token){
-        await redis.set(`blklist:${token}`,'true','EX',24*60*60);
+      //  await redis.set(`blklist:${token}`,'true','EX',24*60*60);
     }
     res.clearCookie('token',{
 
