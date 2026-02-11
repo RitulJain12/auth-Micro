@@ -20,13 +20,17 @@ async function registerUSer(req, res) {
         email,
         password: hash,
         fullName: { firstName, lastName },
-        role: role || 'user'
+        role: role || 'user',
+        ispremium: false,
+        premiumEndDate: null
     })
     const token = jwt.sign({
         id: user._id,
         username: user.username,
         email: user.email,
-        role: user.role
+        role: user.role,
+        ispremium: user.ispremium,
+        premiumEndDate: user.premiumEndDate
     }, process.env.JWT, { expiresIn: '1d' });
     res.cookie("token", token, {
         httpOnly: true,
@@ -259,6 +263,29 @@ async function deleteuserAddresses(req, res) {
     }
 }
 
+async function checkPremium(req,res) {
+    const {ispremium}=req.user;
+    const {premiumEndDate}=req.user;
+    if(!ispremium) return res.status(200).json({message:"Not a Premium User"})
+    if(premiumEndDate > Date.now()) return res.status(200).json({message:"Premium User"});
+    user.ispremium = false;
+    await user.save();
+   return res.status(400).json({message:"Premium User Expired"});
+}
+
+async function upgradeToPremium(req,res) {
+    const id = req.user.id;
+    const {day} = req.body;
+    if(!day) return res.status(400).json({message:"Day is required"});
+    const user = await userModel.findById(id);
+    if(!user) return res.status(404).json({message:"User not found"});
+    user.ispremium = true;
+    user.premiumEndDate = Date.now() + day * 24 * 60 * 60 * 1000;
+    await user.save();
+    return res.status(200).json({message:"Premium User"});
+}
+
+
 module.exports = {
     registerUSer,
     loguser,
@@ -267,7 +294,9 @@ module.exports = {
     getuserAddresses,
     adduserAddresses,
     updateuserAddress,
-    deleteuserAddresses
+    deleteuserAddresses,
+    checkPremium,
+    upgradeToPremium
 }
 
 

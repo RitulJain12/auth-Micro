@@ -1,8 +1,14 @@
 const express = require('express');
 const Router = express.Router();
 const { registerUSerValidations, loginValidations } = require('../middlewares/validator.middleware')
-const { registerUSer, loguser, getCurrentUser, logoutCurrentUser, getuserAddresses, adduserAddresses, updateuserAddress, deleteuserAddresses } = require('../controllers/auth-controller')
+const { registerUSer, loguser, getCurrentUser, logoutCurrentUser, 
+    getuserAddresses, adduserAddresses, updateuserAddress, deleteuserAddresses, 
+    upgradeToPremium, 
+    checkPremium 
+
+} = require('../controllers/auth-controller')
 const { authMiddleware } = require('../middlewares/auth.middleware')
+const { premiumMiddleware } = require('../middlewares/premium.middleware')
 
 
 //POST  /auth/register
@@ -31,6 +37,13 @@ Router.put('/users/me/addresses/:addressId', authMiddleware, updateuserAddress)
 
 //delete /auth/users/me/addresses/:addressId
 Router.delete('/users/me/addresses/:addressId', authMiddleware, deleteuserAddresses)
+
+//post /auth/users/me/premium
+Router.post('/users/me/premium', authMiddleware, upgradeToPremium)
+
+//get /auth/users/me/premium
+Router.get('/users/me/premium', authMiddleware, checkPremium)
+
 
 
 
