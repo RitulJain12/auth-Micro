@@ -1,65 +1,69 @@
-const userModel=require('../models/user.model');
-const bcrypt=require('bcryptjs');
-const jwt=require('jsonwebtoken');
-//const redis = require('../db/redis');
+const userModel = require('../models/user.model');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const redis = require('../db/redis');
+
 require('dotenv').config();
-const RabitMq=require('../service/broker');
-async function registerUSer(req,res) {
-    const {username,email,password,fullName:{firstName,lastName},role}=req.body;
-    const IsuserAlreadyExits=await userModel.findOne({
-        $or:[
-            {username},
-            {email}
+const RabitMq = require('../service/broker');
+async function registerUSer(req, res) {
+    const { username, email, password, fullName: { firstName, lastName }, role } = req.body;
+    const IsuserAlreadyExits = await userModel.findOne({
+        $or: [
+            { username },
+            { email }
         ]
     })
-    if(IsuserAlreadyExits) return res.status(409).json({message:"Username or email already exists"});
-    const hash =await bcrypt.hash(password,10);
-    const user=await userModel.create({
+    if (IsuserAlreadyExits) return res.status(409).json({ message: "Username or email already exists" });
+    const hash = await bcrypt.hash(password, 10);
+    const user = await userModel.create({
         username,
         email,
-        password:hash,
-        fullName:{firstName,lastName},
-        role:role||'user'
+        password: hash,
+        fullName: { firstName, lastName },
+        role: role || 'user'
     })
-    const token=jwt.sign({
-        id:user._id,
-        username:user.username,
-        email:user.email,
-        role:user.role
-    },process.env.JWT,{expiresIn:'1d'});
-    res.cookie("token",token,{
-        httpOnly:true,
-        secure:true,
-        maxAge:24*60*60*1000,
+    const token = jwt.sign({
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role
+    }, process.env.JWT, { expiresIn: '1d' });
+    res.cookie("token", token, {
+        httpOnly: true,
+        secure: true,
+        maxAge: 24 * 60 * 60 * 1000,
     })
     await Promise.all([
-        RabitMq.publishToQueue('User_Created_Queue',{
-            id:user._id,
-            username:user.username,
-            email:user.email,
-            fullName:user.fullName
+        RabitMq.publishToQueue('User_Created_Queue', {
+            id: user._id,
+            username: user.username,
+            email: user.email,
+            fullName: user.fullName
         }),
-        RabitMq.publishToQueue('AUTH_SELLER_DASHBOARD.USER_CREATED',{
-            id:user._id,
-            username:user.username,
-            email:user.email,
-            fullName:user.fullName
+        RabitMq.publishToQueue('AUTH_SELLER_DASHBOARD.USER_CREATED', {
+            id: user._id,
+            username: user.username,
+            email: user.email,
+            fullName: user.fullName
         })
     ])
-    res.status(201).json({message:"User Registered",user:{
-        id:user._id,
-        username:user.username,
-        email:user.email,
-        fullName:user.fullName,
-        role:user.role,
-        addresses:user.addresses
-    }})
+    res.status(201).json({
+        message: "User Registered", user: {
+            id: user._id,
+            username: user.username,
+            email: user.email,
+            fullName: user.fullName,
+            role: user.role,
+            addresses: user.addresses
+        }
+    })
 }
 
 async function loguser(req, res) {
     try {
+        console.log("loginValidations")
         const { username, email, password } = req.body || {};
-        if ((!username && !email) || !password) {
+        if ((!username && !email)) {
             return res.status(400).json({ message: 'Email or username and password are required' });
         }
 
@@ -91,74 +95,104 @@ async function loguser(req, res) {
             secure: true,
             maxAge: 24 * 60 * 60 * 1000,
         });
-
-        return res.status(200).json({ user: {
+        const refreshtoken = jwt.sign({
             id: user._id,
             username: user.username,
-            email: user.email,
-            fullName: user.fullName,
-            role: user.role,
-            addresses: user.addresses
-        }});
+            role: user.role
+        }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '30d' })
+
+        res.cookie('refreshtoken', refreshtoken, {
+            httpOnly: true,
+            secure: true,
+            sameSite: "strict",
+            maxAge: 30 * 24 * 60 * 60 * 1000
+        })
+        user.refreshtoken = refreshtoken;
+        await user.save();
+        return res.status(200).json({
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                fullName: user.fullName,
+                role: user.role,
+                addresses: user.addresses
+            }
+        });
     } catch (err) {
         // avoid leaking internals in tests; respond with 500
         console.error(err);
         return res.status(500).json({ message: 'Server error' });
     }
 }
-  
-async function getCurrentUser(req,res) {
-    
-return res.status(200).json({
-    message:"Current User fetched successfully",
-    user:req.user
-});
 
-}
-
-async function logoutCurrentUser(req,res) {
-    const token=req.cookies.token;
-    if(token){
-      //  await redis.set(`blklist:${token}`,'true','EX',24*60*60);
-    }
-    res.clearCookie('token',{
-
-        httpOnly : true,
-        secure : true,
-    }
-        
-    )
-    return res.status(200).json({message:"Logged out Successfully"});
-}
-
-async function getuserAddresses(req,res) {
-
-    const id=req.user.id;
-    const user=await userModel.findById(id).select('addresses');
-    if(!user) return res.status(404).json({message:"User not found"});
+async function getCurrentUser(req, res) {
+    console.log("Current User in controller:", req.user);
     return res.status(200).json({
-        message:"User addresses fetched Successfully",
-        addresses:user.addresses
-    })
-    
+        message: "Current User fetched successfully",
+        user: req.user
+    });
+
 }
 
-async function adduserAddresses(req,res) {
+async function logoutCurrentUser(req, res) {
+    const token = req.cookies.token;
+    if (token) {
+        await redis.set(`blklist:${token}`, 'true', 'EX', 24 * 60 * 60);
+    }
+    res.clearCookie('token', {
 
-    const id=req.user.id;
-   
+        httpOnly: true,
+        secure: true,
+    }
+    )
+
+    let refreshtoken = req.cookies.refreshtoken
+    if (refreshtoken) {
+        const user = await userModel.findOne({ refreshtoken });
+        if (user) {
+            user.refreshtoken = null;
+            await user.save();
+        }
+    }
+
+    res.clearCookie("refreshtoken", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict"
+    });
+
+    return res.status(200).json({ message: "Logged out Successfully" });
+}
+
+async function getuserAddresses(req, res) {
+
+    const id = req.user.id;
+    const user = await userModel.findById(id).select('addresses');
+    if (!user) return res.status(404).json({ message: "User not found" });
+    return res.status(200).json({
+        message: "User addresses fetched Successfully",
+        addresses: user.addresses
+    })
+
+}
+
+async function adduserAddresses(req, res) {
+
+    const id = req.user.id;
+
     const { street, city, state, zip, country } = req.body || {};
 
-   
+
     if (!street || !city || !country) {
         return res.status(400).json({ message: 'Invalid address data' });
     }
 
-   
-    const user = await userModel.findById(id);
-    if(!user) return res.status(404).json({message:"User not found"});
 
-    
+    const user = await userModel.findById(id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+
     user.addresses.push({ street, city, state, zip, country });
     await user.save();
 
@@ -166,9 +200,42 @@ async function adduserAddresses(req,res) {
         message: "Address added successfully",
         addresses: user.addresses
     })
-    
+
 }
 
+
+async function updateuserAddress(req, res) {
+    try {
+        const id = req.user.id;
+        const { addressId } = req.params || {};
+        if (!addressId) return res.status(400).json({ message: 'Address id is required' });
+
+        const { street, city, state, zip, country } = req.body || {};
+        if (!street || !city || !country) {
+            return res.status(400).json({ message: 'Invalid address data' });
+        }
+
+        const user = await userModel.findById(id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const address = user.addresses.id(addressId);
+        if (!address) return res.status(404).json({ message: 'Address not found' });
+
+        // Update address fields
+        address.street = street;
+        address.city = city;
+        address.state = state || address.state;
+        address.zip = zip || address.zip;
+        address.country = country;
+
+        await user.save();
+
+        return res.status(200).json({ message: 'Address updated successfully', addresses: user.addresses });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: 'Server error' });
+    }
+}
 
 async function deleteuserAddresses(req, res) {
     try {
@@ -192,12 +259,15 @@ async function deleteuserAddresses(req, res) {
     }
 }
 
-module.exports={
+module.exports = {
     registerUSer,
     loguser,
     getCurrentUser,
     logoutCurrentUser,
     getuserAddresses,
     adduserAddresses,
+    updateuserAddress,
     deleteuserAddresses
 }
+
+

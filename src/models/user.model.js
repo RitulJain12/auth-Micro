@@ -33,9 +33,13 @@ role:{
 },
 addresses:[
     addressesSchema
-]
+],
+refreshtoken:{
+    type:String,
+    select:false
+}
 
-})
+},{timestamps:true})
 
 
 const userModel=mongoose.model('user',UserSchema);

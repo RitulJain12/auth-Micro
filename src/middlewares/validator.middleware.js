@@ -2,6 +2,7 @@ const {body,validationResult} =require('express-validator');
 
 
 const respondWithValidation=(req,res,next)=>{
+    console.log("loginValidations")
 const errors=validationResult(req);
 if(!errors.isEmpty()){
     return res.status(400).json({errors:errors.array()});
@@ -35,6 +36,7 @@ const registerUSerValidations=[
 
 const loginValidations=[
     // Accept either email or username for login
+    
     body().custom((_, { req }) => {
         const { email, username } = req.body || {};
         if (!email && !username) {
