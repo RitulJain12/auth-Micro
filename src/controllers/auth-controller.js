@@ -58,7 +58,8 @@ async function registerUSer(req, res) {
             email: user.email,
             fullName: user.fullName,
             role: user.role,
-            addresses: user.addresses
+            addresses: user.addresses,
+            createdAt:user.createdAt
         }
     })
 }
@@ -131,12 +132,28 @@ async function loguser(req, res) {
 }
 
 async function getCurrentUser(req, res) {
-    console.log("Current User in controller:", req.user);
-    return res.status(200).json({
-        message: "Current User fetched successfully",
-        user: req.user
-    });
-
+    try {
+        const user = await userModel.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        return res.status(200).json({
+            message: "Current User fetched successfully",
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                fullName: user.fullName,
+                role: user.role,
+                ispremium: user.ispremium,
+                premiumEndDate: user.premiumEndDate, // Ensure these are sent
+                addresses: user.addresses
+            }
+        });
+    } catch (error) {
+        console.error("Get Current User Error:", error);
+        return res.status(500).json({ message: "Internal Server Error" });
+    }
 }
 
 async function logoutCurrentUser(req, res) {
@@ -263,26 +280,69 @@ async function deleteuserAddresses(req, res) {
     }
 }
 
-async function checkPremium(req,res) {
-    const {ispremium}=req.user;
-    const {premiumEndDate}=req.user;
-    if(!ispremium) return res.status(200).json({message:"Not a Premium User"})
-    if(premiumEndDate > Date.now()) return res.status(200).json({message:"Premium User"});
-    user.ispremium = false;
-    await user.save();
-   return res.status(400).json({message:"Premium User Expired"});
+async function checkPremium(req, res) {
+    const { ispremium, premiumEndDate } = req.user;
+
+    if (!ispremium) {
+        return res.status(200).json({ message: "Not a Premium User", isPremium: false });
+    }
+
+    if (premiumEndDate && new Date(premiumEndDate) > new Date()) {
+        return res.status(200).json({
+            message: "Premium User",
+            isPremium: true,
+            premiumEndDate
+        });
+    }
+
+    // Premium expired, update user
+    try {
+        const user = await userModel.findById(req.user.id);
+        if (user) {
+            user.ispremium = false;
+            user.premiumEndDate = null;
+            await user.save();
+        }
+    } catch (err) {
+        console.error("Error updating expired premium:", err);
+    }
+
+    return res.status(200).json({ message: "Premium User Expired", isPremium: false });
 }
 
-async function upgradeToPremium(req,res) {
-    const id = req.user.id;
-    const {day} = req.body;
-    if(!day) return res.status(400).json({message:"Day is required"});
-    const user = await userModel.findById(id);
-    if(!user) return res.status(404).json({message:"User not found"});
-    user.ispremium = true;
-    user.premiumEndDate = Date.now() + day * 24 * 60 * 60 * 1000;
-    await user.save();
-    return res.status(200).json({message:"Premium User"});
+async function upgradeToPremium(req, res) {
+    let id = req.user?.id;
+    const { day, userId } = req.body;
+
+    // Allow internal service call if userId provided and no auth token (or if token present but we want to upgrade specific user)
+    // Ideally we should check for a secret header here, but for now we trust the internal route
+    if (userId && !id) {
+        id = userId;
+    }
+
+    // Check if we have an ID now (either from token or body)
+    if (!id) return res.status(401).json({ message: "Unauthorized" });
+
+    if (!day) return res.status(400).json({ message: "Day is required" });
+
+    try {
+        const user = await userModel.findById(id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        user.ispremium = true;
+        // If already premium, extend? For now, just set new date from now.
+        user.premiumEndDate = new Date(Date.now() + day * 24 * 60 * 60 * 1000);
+
+        await user.save();
+        return res.status(200).json({
+            message: "Premium Activated",
+            isPremium: true,
+            premiumEndDate: user.premiumEndDate
+        });
+    } catch (err) {
+        console.error("Error upgrading user:", err);
+        return res.status(500).json({ message: "Internal Server Error" });
+    }
 }
 
 

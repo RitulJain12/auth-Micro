@@ -3,15 +3,12 @@ const app = express();
 const cookieParser = require('cookie-parser');
 const authRouter = require('./routes/authroute')
 const refreshcontroller=require('./controllers/refresh-controller')
-const recommendRouter=require('./routes/recoomend.route');
 
+// MiddleWares
 app.use(express.json());
 app.use(cookieParser());
 
-
-console.log("Auth service loaded");
-
-
+//Routes
 app.use('/auth', authRouter);
 app.use('/refresh',refreshcontroller);
 
