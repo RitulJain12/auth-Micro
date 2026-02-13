@@ -18,7 +18,7 @@ client.connect().then(()=>console.log("Reddis is Connected"))
 
 
 //Service Up Checking Point
-app.get('/auth', (req,res) =>{ return res.status(200).json({message:"AuthService is Up"})})
+app.get('/health', (req,res) =>{ return res.status(200).json({message:"AuthService is Up"})})
 
 
 app.listen(process.env.PORT,async ()=>{
